@@ -1,0 +1,31 @@
+[Unit]
+Description=Grok Auto Register (unlimited loop via MicroWARP)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+StartLimitIntervalSec=300
+StartLimitBurst=10
+# MicroWARP runs as docker container microwarp (SOCKS5 127.0.0.1:1080)
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/grok-auto-register
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/root
+# Ensure MicroWARP is up before register loop
+ExecStartPre=/bin/bash -c 'docker start microwarp 2>/dev/null || true; for i in 1 2 3 4 5 6 7 8 9 10; do ss -lntp 2>/dev/null | grep -q ":1080" && exit 0; sleep 1; done; echo "WARN: microwarp :1080 not listening yet"; exit 0'
+ExecStart=/opt/grok-auto-register/.venv/bin/python /opt/grok-auto-register/grok_register_ttk.py loop
+Restart=always
+RestartSec=15
+# Logs to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grok-register
+# Browser-friendly limits
+LimitNOFILE=65535
+TimeoutStopSec=60
+KillMode=mixed
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

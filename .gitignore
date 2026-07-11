@@ -1,0 +1,31 @@
+# secrets / local
+.env
+.env.*
+*.pem
+*.key
+config.json
+/etc/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# build artifacts
+*.so
+*.dll
+*.dylib
+*.h
+*.o
+*.a
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# logs / runtime
+register_output/
+logs/
+*.log

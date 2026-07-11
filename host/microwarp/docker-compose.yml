@@ -1,0 +1,22 @@
+# MicroWARP: ultra-light Cloudflare WARP SOCKS5
+# https://github.com/ccbkkb/MicroWARP
+services:
+  microwarp:
+    image: ghcr.io/ccbkkb/microwarp:latest
+    container_name: microwarp
+    restart: always
+    ports:
+      - "127.0.0.1:1080:1080"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - warp-data:/etc/wireguard
+    # Optional: if UDP 2408 is blocked/QoS on the host
+    # environment:
+    #   - ENDPOINT_IP=162.159.192.1:4500
+
+volumes:
+  warp-data:
