@@ -25,8 +25,8 @@ APP_DIR="${APP_DIR:-/opt/grok-auto-register}"
 CPA_DIR="${CPA_DIR:-/root/CLIProxyAPI}"
 CONTROL_TOKEN="${CONTROL_TOKEN:-}"
 SKIP_MICROWARP="${SKIP_MICROWARP:-0}"
-SKIP_WORKER_CLONE="${SKIP_WORKER_CLONE:-0}"
-REGISTER_REPO="${REGISTER_REPO:-}"
+# If 1, do not overwrite existing worker files under APP_DIR (except control scripts)
+SKIP_WORKER_SYNC="${SKIP_WORKER_SYNC:-0}"
 
 echo "========================================"
 echo "  CPA-GrokRegister installer"
@@ -45,30 +45,66 @@ if [[ -z "$CONTROL_TOKEN" ]]; then
   echo "[install] generated CONTROL_TOKEN=${CONTROL_TOKEN}"
 fi
 
-# ---------- 1) worker tree ----------
-if [[ ! -d "$APP_DIR" ]]; then
-  if [[ -n "$REGISTER_REPO" && "$SKIP_WORKER_CLONE" != "1" ]]; then
-    echo "[install] cloning worker from $REGISTER_REPO"
-    git clone --depth 1 "$REGISTER_REPO" "$APP_DIR"
+# ---------- 1) worker tree (bundled under ./worker) ----------
+mkdir -p "$APP_DIR" "$APP_DIR/deploy/linux" "$APP_DIR/register_output/auths" "$APP_DIR/register_output/full"
+
+if [[ -d "$PKG_ROOT/worker" ]]; then
+  if [[ "$SKIP_WORKER_SYNC" == "1" && -f "$APP_DIR/grok_register_ttk.py" ]]; then
+    echo "[install] SKIP_WORKER_SYNC=1 — keep existing worker at $APP_DIR"
   else
-    echo "[install] creating $APP_DIR skeleton (worker code not bundled)"
-    mkdir -p "$APP_DIR/deploy/linux" "$APP_DIR/register_output/auths" "$APP_DIR/register_output/full"
-    echo "[install] WARN: place grok-auto-register sources into $APP_DIR"
-    echo "         (grok_register_ttk.py, cpa_xai/, requirements.txt, ...)"
+    echo "[install] syncing bundled worker → $APP_DIR"
+    # Preserve existing config.json if present
+    KEEP_CFG=""
+    if [[ -f "$APP_DIR/config.json" ]]; then
+      KEEP_CFG="$(mktemp)"
+      cp -a "$APP_DIR/config.json" "$KEEP_CFG"
+    fi
+    # rsync if available, else cp -a
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete \
+        --exclude 'config.json' \
+        --exclude 'register_output/' \
+        --exclude '.venv/' \
+        --exclude '__pycache__/' \
+        --exclude '.browser_profiles/' \
+        "$PKG_ROOT/worker/" "$APP_DIR/"
+    else
+      # copy tree without wiping outputs
+      cp -a "$PKG_ROOT/worker/." "$APP_DIR/"
+    fi
+    if [[ -n "$KEEP_CFG" && -f "$KEEP_CFG" ]]; then
+      cp -a "$KEEP_CFG" "$APP_DIR/config.json"
+      rm -f "$KEEP_CFG"
+      echo "[install] preserved existing config.json"
+    fi
   fi
 else
-  echo "[install] APP_DIR exists: $APP_DIR"
+  echo "[install] ERROR: bundled worker/ missing in package"
+  exit 1
 fi
 
-mkdir -p "$APP_DIR/deploy/linux" "$APP_DIR/register_output/auths" "$APP_DIR/register_output/full"
-
-# copy control plane into app
+# always refresh control plane + unit files from package
 cp -f "$PKG_ROOT/control/register_control.py" "$APP_DIR/deploy/linux/register_control.py"
 cp -f "$PKG_ROOT/control/register-control.service" "$APP_DIR/deploy/linux/register-control.service"
 cp -f "$PKG_ROOT/host/grok-register.service" "$APP_DIR/deploy/linux/grok-register.service"
-if [[ -f "$PKG_ROOT/host/config.linux.example.json" && ! -f "$APP_DIR/config.json" ]]; then
-  cp -f "$PKG_ROOT/host/config.linux.example.json" "$APP_DIR/config.json"
-  echo "[install] wrote example config.json — edit secrets before start"
+if [[ -f "$PKG_ROOT/host/install_microwarp.sh" ]]; then
+  cp -f "$PKG_ROOT/host/install_microwarp.sh" "$APP_DIR/deploy/linux/install_microwarp.sh"
+  chmod +x "$APP_DIR/deploy/linux/install_microwarp.sh" || true
+fi
+if [[ -d "$PKG_ROOT/host/microwarp" ]]; then
+  mkdir -p "$APP_DIR/deploy/linux/microwarp"
+  cp -a "$PKG_ROOT/host/microwarp/." "$APP_DIR/deploy/linux/microwarp/"
+fi
+
+if [[ ! -f "$APP_DIR/config.json" ]]; then
+  if [[ -f "$PKG_ROOT/host/config.linux.example.json" ]]; then
+    cp -f "$PKG_ROOT/host/config.linux.example.json" "$APP_DIR/config.json"
+  elif [[ -f "$APP_DIR/config.example.json" ]]; then
+    cp -f "$APP_DIR/config.example.json" "$APP_DIR/config.json"
+  elif [[ -f "$APP_DIR/deploy/linux/config.linux.json" ]]; then
+    cp -f "$APP_DIR/deploy/linux/config.linux.json" "$APP_DIR/config.json"
+  fi
+  echo "[install] wrote config.json from example — edit secrets before start"
 fi
 
 # ---------- 2) python venv for control (and worker if present) ----------
@@ -85,9 +121,12 @@ python -m pip install -U pip setuptools wheel >/dev/null
 if [[ -f "$APP_DIR/requirements.txt" ]]; then
   echo "[install] pip install worker requirements..."
   pip install -r "$APP_DIR/requirements.txt"
+  # best-effort browser deps for cloak/playwright
+  python -m playwright install chromium 2>/dev/null || true
+  python -m playwright install-deps chromium 2>/dev/null || true
 else
   pip install curl_cffi requests >/dev/null || true
-  echo "[install] worker requirements.txt missing — installed minimal deps for control only"
+  echo "[install] WARN: requirements.txt missing"
 fi
 
 # ---------- 3) MicroWARP (optional) ----------
@@ -265,7 +304,7 @@ echo "    /v0/resource/plugins/grok-register/panel"
 echo "  Token saved in: /etc/default/register-control"
 echo
 echo "  Next:"
-echo "    1) Put worker code in $APP_DIR if missing"
-echo "    2) Edit $APP_DIR/config.json (shiromail / cpa keys)"
-echo "    3) Open WebUI or CPA panel → Start unlimited"
+echo "    1) Edit $APP_DIR/config.json (shiromail / cpa keys / proxy)"
+echo "       or open WebUI Settings and save"
+echo "    2) Open WebUI or CPA panel → Start unlimited"
 echo "========================================"

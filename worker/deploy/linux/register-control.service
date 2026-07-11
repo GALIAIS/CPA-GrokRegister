@@ -1,0 +1,26 @@
+[Unit]
+Description=Grok Register Control HTTP (for CPA management plugin)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/grok-auto-register
+Environment=PYTHONUNBUFFERED=1
+Environment=REGISTER_CONTROL_HOST=0.0.0.0
+Environment=REGISTER_CONTROL_PORT=18927
+Environment=REGISTER_UNIT=grok-register
+Environment=REGISTER_APP_DIR=/opt/grok-auto-register
+Environment=REGISTER_SSE_INTERVAL_SEC=1.0
+# Optional: public URL for browser EventSource (e.g. http://15.204.116.103:18927)
+# Environment=REGISTER_CONTROL_PUBLIC_URL=http://15.204.116.103:18927
+# Override token / public URL in EnvironmentFile
+EnvironmentFile=-/etc/default/register-control
+ExecStart=/opt/grok-auto-register/.venv/bin/python /opt/grok-auto-register/deploy/linux/register_control.py
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

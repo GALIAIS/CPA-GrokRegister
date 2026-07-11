@@ -4,11 +4,20 @@
 *.pem
 *.key
 config.json
+**/config.json
+!host/config.linux.example.json
+!worker/config.example.json
+!worker/deploy/linux/config.linux.json
 /etc/
 __pycache__/
+**/__pycache__/
 *.pyc
 .venv/
 venv/
+worker/register_output/
+worker/.browser_profiles/
+worker/screenshots/
+worker/11111111111/
 
 # build artifacts
 *.so

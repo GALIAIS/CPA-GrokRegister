@@ -2,8 +2,8 @@
 
 **CLIProxyAPI management plugin + host control plane** for an xAI (Grok) auto-registration worker.
 
-> 本仓库是 **CPA 管理插件 + 主机控制面 + 一键安装脚本**。  
-> **浏览器注册逻辑**在独立的 worker 项目中（`grok-auto-register`），不嵌入 CPA 进程。
+> 本仓库包含：**CPA 管理插件 + 主机控制面 + 注册 worker 源码 + 一键安装脚本**。  
+> 浏览器注册逻辑在 `worker/`，**不**嵌入 CPA 进程；通过 control plane 启停。
 
 ```text
 ┌──────────────────────┐     HTTP/SSE      ┌─────────────────────────┐
@@ -38,7 +38,7 @@
 | OS | Linux x86_64 (tested Ubuntu 22.04) |
 | CPA | CLIProxyAPI with `plugins.enabled` |
 | Docker | For CPA container + optional MicroWARP |
-| Worker | `grok-auto-register` sources in `APP_DIR` |
+| Worker | Bundled under `worker/` (synced to `APP_DIR`) |
 | Mail | e.g. ShiroMail API |
 | Go / golang image | To build `grok-register.so` (CGO) |
 
@@ -52,11 +52,13 @@ cd CPA-GrokRegister
 sudo bash scripts/install.sh
 ```
 
-Or:
+`install.sh` will:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/GALIAIS/CPA-GrokRegister/main/scripts/install.sh | sudo bash
-```
+1. Sync **bundled worker** → `/opt/grok-auto-register`
+2. Install Python venv + requirements
+3. Start **register-control** (WebUI + SSE + config API)
+4. Build CPA plugin `grok-register.so` and enable it
+5. Optionally install **MicroWARP** SOCKS5
 
 Optional env:
 
@@ -65,18 +67,18 @@ sudo \
   APP_DIR=/opt/grok-auto-register \
   CPA_DIR=/root/CLIProxyAPI \
   CONTROL_TOKEN='your-long-token' \
+  SKIP_MICROWARP=0 \
+  SKIP_WORKER_SYNC=0 \
   bash scripts/install.sh
 ```
 
 ### After install
 
-1. Place **worker** code into `/opt/grok-auto-register` if not already present  
-   (`grok_register_ttk.py`, `cpa_xai/`, `requirements.txt`, …)
-2. Edit `/opt/grok-auto-register/config.json`  
+1. Edit `/opt/grok-auto-register/config.json` (or WebUI **Settings**):  
    - `shiromail_api_key` / `shiromail_domain`  
    - `cpa_api_base` / `cpa_api_key`  
    - `proxy` (e.g. `socks5://127.0.0.1:1080` for MicroWARP)
-3. Open WebUI or CPA panel → **Start unlimited**
+2. Open WebUI or CPA panel → **Start unlimited**
 
 ## Access
 
@@ -149,6 +151,12 @@ volumes:
 CPA-GrokRegister/
 ├── README.md
 ├── LICENSE
+├── worker/                  # full registration worker (Python)
+│   ├── grok_register_ttk.py
+│   ├── cloak_browser.py
+│   ├── cpa_xai/
+│   ├── requirements.txt
+│   └── ...
 ├── control/                 # host control plane (SSE WebUI + API)
 │   ├── register_control.py
 │   ├── register-control.service
@@ -173,12 +181,12 @@ CPA-GrokRegister/
 - CPA management panel still requires the CPA **management key**.
 - Never commit real `config.json` or tokens.
 
-## Worker project
+## Worker
 
-Registration browser logic lives in a separate project (not fully vendored here to keep this repo focused on CPA integration):
+Full worker sources are under [`worker/`](worker/).  
+`install.sh` copies them to `APP_DIR` (default `/opt/grok-auto-register`), preserving an existing `config.json` if present.
 
-- Deploy worker sources under `APP_DIR` (default `/opt/grok-auto-register`)
-- Or set `REGISTER_REPO=...` when running `install.sh` to clone automatically
+Set `SKIP_WORKER_SYNC=1` to keep an already customized worker tree.
 
 ## License
 
